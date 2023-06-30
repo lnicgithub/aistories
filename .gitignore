@@ -161,3 +161,8 @@ cython_debug/
 
 # env file
 .env
+.vercel
+.param_env
+.creds
+.txt
+local_only/

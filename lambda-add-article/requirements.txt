@@ -1,0 +1,5 @@
+boto3
+praw
+openai
+datetime
+uuid
