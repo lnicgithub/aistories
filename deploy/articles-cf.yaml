@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'articles app deployment'
+Resources:
+  ArticlesTable:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      TableName: "articles"
+      AttributeDefinitions:
+        - AttributeName: "Id"
+          AttributeType: "S"
+        - AttributeName: "Title"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "Id"
+          KeyType: "HASH"
+        - AttributeName: "Title"
+          KeyType: "RANGE"  
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  AddArticleLambdaFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        FunctionName: add_article
+        Role: !Sub arn:aws:iam::${AWS::AccountId}:role/lambda-db-ssm-role
+        Timeout: 10
+        PackageType: Image
+        Code:
+          ImageUri: 829003831260.dkr.ecr.eu-west-2.amazonaws.com/add-article:latest
+
+  GetArticleLambdaFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        FunctionName: get_article
+        Role: !Sub arn:aws:iam::${AWS::AccountId}:role/lambda-db-ssm-role
+        Timeout: 10
+        PackageType: Image
+        Code:
+          ImageUri: 829003831260.dkr.ecr.eu-west-2.amazonaws.com/get-article:latest
+  
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: articles
+
+  PostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !GetAtt ApiGateway.RootResourceId
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionArn}/invocations
+          - LambdaFunctionArn: !GetAtt AddArticleLambdaFunction.Arn
+        IntegrationResponses:
+          - StatusCode: 200        
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+        
+        
+  
+  GetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !GetAtt ApiGateway.RootResourceId
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionArn}/invocations
+          - LambdaFunctionArn: !GetAtt GetArticleLambdaFunction.Arn
+        IntegrationResponses:
+          - StatusCode: 200        
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+  
+  ApiDeployment:
+    DependsOn: [GetMethod, PostMethod]
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref ApiGateway
+      Description: Initial deployment for rest endpoints
+      StageName: Test
+  
+  PostArticleLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AddArticleLambdaFunction
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway.RestApiId}/*/POST/"
+  
+  GetArticleLambdaApiPermission:
+   Type: AWS::Lambda::Permission
+   Properties:
+     Action: lambda:InvokeFunction
+     FunctionName: !Ref GetArticleLambdaFunction
+     Principal: "apigateway.amazonaws.com"
+     SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway.RestApiId}/*/GET/"
